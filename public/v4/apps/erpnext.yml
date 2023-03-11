@@ -1,0 +1,184 @@
+captainVersion: 4
+services:
+  $$cap_appname-backend:
+    image: frappe/erpnext:$$cap_erpnext_version
+    restart: on-failure
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  $$cap_appname-configurator:
+    # restart none not working, so it loops
+    restart: on-failure
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        # - CMD ls -1 apps > sites/apps.txt; bench set-config -g db_host $$DB_HOST; bench set-config -gp db_port $$DB_PORT; bench set-config -g redis_cache "redis://$$REDIS_CACHE";  bench set-config -g redis_queue "redis://$$REDIS_QUEUE"; CMD bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO"; bench set-config -gp socketio_port $$SOCKETIO_PORT;
+        # had to use this instead of the above because the above was not working (not executed at all)
+        - CMD ls -1 apps > sites/apps.txt; bench set-config -g db_host srv-captain--$$cap_appname-db; bench set-config -gp db_port 3306; bench set-config -g redis_cache "redis://srv-captain--$$cap_appname-redis-cache";  bench set-config -g redis_queue "redis://srv-captain--$$cap_appname-redis-queue"; bench set-config -g redis_socketio "redis://srv-captain--$$cap_appname-redis-socketio"; bench set-config -gp socketio_port 9000;
+
+        # - CMD ["ls", "-1", "apps", ">", "sites/apps.txt;", "bench", "set-config", "-g", "db_host", "srv-captain--$$cap_appname-db;", "bench", "set-config", "-gp", "db_port", "3306;", "bench", "set-config", "-g", "redis_cache", "redis://srv-captain--$$cap_appname-redis-cache:6379;", "bench", "set-config", "-g", "redis_queue", "redis://srv-captain--$$cap_appname-redis-queue:6379;", "bench", "set-config", "-g", "redis_socketio", "redis://srv-captain--$$cap_appname-redis-socketio:6379;", "bench", "set-config", "-gp", "socketio_port", "9000"]
+
+  $$cap_appname-redis-queue:
+    image: redis:$$cap_redis_version
+    restart: on-failure
+    volumes:
+      - $$cap_appname-redis-queue:/data
+
+  $$cap_appname-redis-cache:
+    image: redis:$$cap_redis_version
+    restart: on-failure
+    volumes:
+      - $$cap_appname-redis-cache:/data
+
+  $$cap_appname-redis-socketio:
+    image: redis:$$cap_redis_version
+    restart: on-failure
+    volumes:
+      - $$cap_appname-redis-socketio:/data
+
+  $$cap_appname-db:
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+    volumes:
+      - $$cap_appname-db:/var/lib/mysql
+    caproverExtra:
+        dockerfileLines:
+        - FROM mariadb:$$cap_mariadb_version
+        - CMD  ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci",  "--skip-character-set-client-handshake", "--skip-innodb-read-only-compressed"]
+
+  $$cap_appname-create-site:
+    # restart none: not working
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        # add --db-host to srv-captain--$$cap_appname-db and --db-port to 3306 because of caprover and removed --no-mariadb-socket
+        - CMD ["bench", "new-site", "frontend", "--admin-password=admin", "--db-root-password=admin", "--install-app", "erpnext", "--set-default", "--db-host", "srv-captain--$$cap_appname-db", "--db-port", "3306"]
+
+      volumes:
+        - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+        - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+    depends-on:
+      - $$cap_appname-db
+      - $$cap_appname-redis-queue
+      - $$cap_appname-redis-cache
+      - $$cap_appname-redis-socketio
+
+  $$cap_appname-queue-default:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD ["bench", "worker", "--queue", "default"]
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  $$cap_appname-queue-long:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD  ["bench", "worker", "--queue", "long"]
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  $$cap_appname-queue-short:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD ["bench", "worker", "--queue", "short"]
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  $$cap_appname-scheduler:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD ["bench", "schedule"]
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  $$cap_appname-websocket:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+
+  # this one still doesnt work, one reason may be that create-site takes too much times
+  # also there isnt any error in the logs for this
+  # also the new-site cmd doesnt appear in the logs (but was executed according to the logs in caprover)
+  $$cap_appname-frontend:
+    restart: on-failure
+    caproverExtra:
+      dockerfileLines:
+        - FROM frappe/erpnext:$$cap_erpnext_version
+        - CMD ["docker-entrypoint.sh"]
+    environment:
+      BACKEND: srv-captain--$$cap_appname-backend
+      FRAPPE_SITE_NAME_HEADER: frontend
+      SOCKETIO: srv-captain--$$cap_appname-websocket
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMOUT: 120
+      CLIENT_MAX_BODY_SIZE: 50m
+    volumes:
+      - $$cap_appname-sites:/home/frappe/frappe-bench/sites
+      - $$cap_appname-logs:/home/frappe/frappe-bench/logs
+    ports:
+      - "8080:8080"
+
+caproverOneClickApp:
+    variables:
+        - id: $$cap_erpnext_version
+          label: ERPNext version
+          defaultValue: 'v14.18.2'
+          description: Check out this Docker page for any valid tags https://hub.docker.com/r/frappe/erpnext/tags
+
+        - id: $$cap_mariadb_version
+          label: Mariadb version
+          defaultValue: '10.6'
+          description: Check out this Docker page for any valid tags https://hub.docker.com/_/mariadb/tags
+
+        - id: $$cap_redis_version
+          label: Redis version
+          defaultValue: '6.2-alpine'
+          description: Check out this Docker page for any valid tags https://hub.docker.com/_/redis/tags
+        # configurator options
+        # - id: $$cap_
+        #   label: Redis version
+        #   defaultValue: '6.2-alpine'
+        #   description: Check out this Docker page for any valid tags https://hub.docker.com/_/redis/tags
+
+    instructions:
+        start: >-
+            ERPNext is a free and open source ERP
+
+            For more documentation on the project go to: https://docs.erpnext.com/
+        end: >
+            ERPNext is deployed and available as $$cap_appname.
+            Before starting using ERPNext, you'll need to
+            1) Enable HTTPS for ... and $$cap_appname apps.
+            2) Force HTTPS by redirecting all HTTP traffic to HTTPS for ... and $$cap_appname apps.
+            3) Enable Websocket in ... and $$cap_appname apps.
+            IMPORTANT: It will take up to 5 minutes for ERPNext to be ready. Before that, you might see 502 error page.
+    displayName: 'ERPNext'
+    isOfficial: false
+    description: The most agile ERP on the planet. ERPNext is the world's best free and open source ERP
+    documentation: Taken from https://github.com/frappe/frappe_docker/blob/main/pwd.yml              -
+
+       
