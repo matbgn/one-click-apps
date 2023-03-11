@@ -126,7 +126,7 @@ services:
     caproverExtra:
       dockerfileLines:
         - FROM frappe/erpnext:$$cap_erpnext_version
-        - CMD ["docker-entrypoint.sh"]
+        - CMD ["nginx-entrypoint.sh"]
     environment:
       BACKEND: srv-captain--$$cap_appname-backend
       FRAPPE_SITE_NAME_HEADER: frontend
